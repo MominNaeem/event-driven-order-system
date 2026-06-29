@@ -1,0 +1,91 @@
+version: "3.9"
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: orders
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  order-service:
+    image: node:18-alpine
+    working_dir: /app
+    volumes:
+      - ./services/order:/app
+      - ./shared:/shared
+    command: sh -c "npm install && node index.js"
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/orders
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  inventory-service:
+    image: node:18-alpine
+    working_dir: /app
+    volumes:
+      - ./services/inventory:/app
+      - ./shared:/shared
+    command: sh -c "npm install && node index.js"
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/orders
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  payment-service:
+    image: node:18-alpine
+    working_dir: /app
+    volumes:
+      - ./services/payment:/app
+      - ./shared:/shared
+    command: sh -c "npm install && node index.js"
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  notification-service:
+    image: node:18-alpine
+    working_dir: /app
+    volumes:
+      - ./services/notification:/app
+      - ./shared:/shared
+    command: sh -c "npm install && node index.js"
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
